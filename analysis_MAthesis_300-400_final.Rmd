@@ -1,0 +1,312 @@
+---
+title: "analysis_MAthesis_300-400"
+author: "Amélie la Roi"
+date: "3 februari 2017"
+output: html_document
+---
+
+Last update: January 14, 2019
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+# Data analysis after course Martijn Wieling
+
+# Load data
+```{r}
+print(load("Y:/staff/let/SemanticsAndCognition/LaRoi/Master thesis/Data/EEG/EEG - Final data/T2_final.rdat"))
+
+## Aggregate data --> hierna zijn er 4 datapunten per trial (1 per ROI)
+dat2 <- aggregate(all.T2_final$mV, by=list(all.T2_final$Subject, all.T2_final$Group.x, all.T2_final$TrialNr, all.T2_final$Target, all.T2_final$Constraint, all.T2_final$Idiomaticity, all.T2_final$Condition, all.T2_final$Anteriority, all.T2_final$Hemisphere, all.T2_final$Score_total_adj, 
+all.T2_final$VF_total_ADJ, all.T2_final$WP_total, all.T2_final$WP_error), FUN=mean)
+colnames(dat2) <- c('Subject','Group','Trial','Target','Context','Idiomaticity','Condition',
+                    'Anteriority','Hemisphere','RS','VF','WP_total','WP_error','mV')
+save(dat2, file="./EEG - Final data/dat2.rdat")
+```
+
+# Inspect variables --> controleer normale verdeling en scale variabelen wanneer nodig
+```{r}
+hist(dat2$RS)
+hist(dat2$VF)
+hist(scale(dat2$WP_total, center=T, scale=T))
+dat2$WP.scale <- scale(dat2$WP_total, center=T, scale=T)
+hist(dat2$WP.scale)
+
+# check dummy coding and relevel if necessary
+contrasts(dat2$Group)
+contrasts(dat2$Context)
+contrasts(dat2$Idiomaticity)
+contrasts(dat2$Condition)
+
+dat2$Group <- relevel(dat2$Group, "student")
+dat2$Context <- relevel(dat2$Context, "Neutral")
+dat2$Idiomaticity <- relevel(dat2$Idiomaticity, "Lit")
+```
+
+# Model fitting
+## Start by model with only random intercepts
+```{r}
+library('lme4')
+m1.T2 <- lmer(mV ~ (1|Subject) + (1|Target), data=dat2)
+summary(m1.T2)
+```
+
+## Check whether by-item analysis is needed
+```{r}
+m2.T2 <- lmer(mV ~ (1|Subject), data=dat2)
+AIC(m2.T2)-AIC(m1.T2) # addition of random intercept for Target minimizes AIC by more than 2, so keep in
+```
+
+## Test effect of 'Condition'
+```{r}
+m3.T2 <- lmer(mV ~ Condition + (1|Subject) + (1|Target), data=dat2, REML=F)
+summary(m3.T2) # Condition is a significant predictor
+m1.T2 <- lmer(mV ~ (1|Subject) + (1|Target), data=dat2, REML=F) # REML=F to compare fixed effects
+AIC(m1.T2)-AIC(m3.T2) # inclusion of Condition improves model fit
+```
+
+## Test effect of 'Idiomaticity'
+```{r}
+m4.T2 <- lmer(mV ~ Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat2, REML=F)
+summary(m4.T2) # 'Idiomaticity' is a significant predictor
+AIC(m3.T2)-AIC(m4.T2) # inclusion of Idiomaticity improves model fit
+```
+
+## Test whether 'Idiomaticity' and 'Condition' interact
+```{r}
+m5.T2 <- lmer(mV ~ Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat2, REML=F)
+summary(m5.T2) # significant interaction 'Idiomaticity' and 'Condition'
+AIC(m4.T2)-AIC(m5.T2) # AIC decreases with >2, so interaction Idiomaticity * Condition significantly improves model
+```
+
+## Test whether relation between 'Idiomaticity' and 'Condition' is modulated by 'Group'
+```{r}
+m6.T2 <- lmer(mV ~ Group * Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat2, REML=F)
+summary(m6.T2) # relation between 'Idiomaticity' and 'Condition' is significantly modulated by 'Group'
+AIC(m5.T2)-AIC(m6.T2) # AIC decreases with >2, so interaction Group * Idiomaticity * Condition significantly improves model
+```
+
+## Test effect of 'Context' 
+```{r}
+m7.T2 <- lmer(mV ~ Context + Group * Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat2, REML=F)
+summary(m7.T2) # 'Context' is a significant predictor
+AIC(m6.T2)-AIC(m7.T2) # AIC decreases by >2, addition of Context improves model's fit
+```
+
+## Test whether 'Context' modulates interaction Group * Idiomaticity * Condition
+```{r}
+m8.T2 <- lmer(mV ~ Context * Group * Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat2, REML=F)
+summary(m8.T2) # 'Context' does not modulate interaction Group*Idiomaticity*Condition, keep as main effect
+```
+
+## Test effect spatial predictors
+```{r}
+m9.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+(1|Subject)+(1|Target), data=dat2, REML=F)
+summary(m9.T2) # Anteriority is significant
+AIC(m8.T2)-AIC(m9.T2) # inclusion of Anteriority improves model fit
+
+m10.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+
+                 (1|Subject)+(1|Target), data=dat2, REML=F)
+summary(m10.T2) # Hemisphere is significant
+AIC(m9.T2)-AIC(m10.T2) # inclusion of Hemisphere improves model fit
+```
+
+## Test effect of offline cognitive tests
+### Center variables
+```{r}
+dat2$RS.c <- (dat2$RS - mean(dat2$RS))
+dat2$VF.c <- (dat2$VF - mean(dat2$VF))
+dat2$WP_total.c <- (dat2$WP_total - mean(dat2$WP_total))
+
+m11.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+RS.c+
+                 (1|Subject)+(1|Target), data=dat2, REML=F)
+summary(m11.T2) # RS.c is not a significant predictor, so leave out
+
+m12.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+VF.c+
+                 (1|Subject)+(1|Target), data=dat2, REML=F)
+summary(m12.T2) # VF.c is a significant predictor, keep in
+AIC(m10.T2)-AIC(m12.T2) # inclusion of VF.c improves model fit
+
+m13.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+VF.c+WP_total.c+
+                 (1|Subject)+(1|Target), data=dat2, REML=F)
+summary(m13.T2) # WP_total is not a significant predictor, so leave out
+```
+### Best model based on fixed effects: m12.T2 
+
+# Add random slopes
+```{r}
+m12a.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+VF.c+
+                  (1+ Idiomaticity|Subject)+(1|Target), data=dat2, REML=T) # add random slopes for Idiomaticy per Subject
+                                                                              ## this means that the effect of the Idiomaticity
+                                                                              ## of the test sentence on the voltage may
+                                                                              ## differ over Subjects (e.g., one elderly
+                                                                              ## adult may be more familiar with a specific
+                                                                              ## idiom than another elderly adult)
+
+                                                                              ### this random slope can account for the
+                                                                              ### fact that the idiom characteristics
+                                                                              ### were only pre-tested on younger adults
+summary(m12a.T2)
+m12.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+VF.c+
+                 (1|Subject)+(1|Target), data=dat2, REML=T) # REML=T to compare random effects
+AIC(m12.T2)-AIC(m12a.T2) # random slope for Idiomaticity per Subject decreases AIC by >2, so keep in
+anova(m12.T2, m12a.T2, refit=F) ## random slope for Idiomaticity significantly improves the model's fit to the data
+
+m12b.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+VF.c+
+                  (1+ Idiomaticity|Subject)+(1+ Context|Target), data=dat2, REML=T) # add random slopes for Context per Target
+                                                                                      # add random slopes for Context per Target
+                                                                                      ## this means that the effect of Context
+                                                                                      ## on the mean voltage may be differ
+                                                                                      ## over Targets (and thus idioms)
+                                                                                      ## (e.g., a particular Target may be influenced
+                                                                                      ## more by a preceding context than the other, 
+                                                                                      ## because this target less more predictable)
+summary(m12b.T2)
+AIC(m12a.T2)-AIC(m12b.T2) # random slope for Context per Target decreases AIC by >2, so keep in
+anova(m12a.T2, m12b.T2, refit=F) ## random slope for Target per Subject significantly improves the model's fit to the data
+```
+
+## Check distribution of residuals and trim model if needed
+```{r}
+qqnorm(resid(m12b.T2))
+qqline(resid(m12b.T2))
+plot(fitted(m12b.T2), resid(m12b.T2))
+hist(resid(m12b.T2))
+
+## trim data
+dat2.trim <- dat2[abs(scale(resid(m12b.T2))) < 2.5, ]
+
+## save trimmed data
+save(dat2.trim, file="./EEG - Final data/dat2.trim.rdat" )
+
+## fit model with trimmed data
+m12c.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+VF.c+
+                  (1+ Idiomaticity|Subject)+(1+ Context|Target), data=dat2.trim, REML=T) 
+summary(m12c.T2)
+
+## check how much data was removed
+(noutliers <- sum(abs(scale(resid(m12b.T2))) >= 2.5))
+noutliers/nrow(dat2) # only 2.30 % of the data was removed
+
+## check change in correlation between observed and fitted values after trimming the data
+cor(dat2$mV, fitted(m12b.T2))^2 # is 0.128
+cor(dat2.trim$mV, fitted(m12c.T2))^2 # increased to 0.151
+
+## check distribution of residuals after trimming
+qqnorm(resid(m12c.T2))
+qqline(resid(m12c.T2))
+plot(fitted(m12c.T2), resid(m12c.T2))
+hist(resid(m12c.T2)) # approaches normal distribution
+```
+
+# Final model: m12c.T2 (for summmary of coefficients final model set REML to TRUE)
+
+# To get insight in the direction of the interaction between Group, Idiomaticity, and Condition, calculate contrasts
+```{r}
+library(lsmeans)
+dat2.trim$Condition <- relevel(dat2.trim$Condition, "incorrect") # relevel the factor Condition to make contrasts more comprehensible
+m12c.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+VF.c+
+                  (1+ Idiomaticity|Subject)+(1+ Context|Target), data=dat2.trim, REML=F) # refit model with releveled factor
+(T2_contrast_Idiom <- lsmeans(m12c.T2, pairwise ~ Condition|Group|Idiomaticity))
+(T2_contrast_Cond <- lsmeans(m12c.T2, pairwise ~ Idiomaticity|Group|Condition))
+
+# visualize interaction
+lsmip(m12c.T2, Condition ~ Idiomaticity|Group)
+lsmip(m12c.T2, Idiomaticity ~ Condition|Group)
+
+```
+
+# Prepare data for plotting with the 'effects' package
+```{r}
+# See https://rpubs.com/palday/mixed-interactions
+
+# Rename factor levels for plotting
+library(plyr)
+levels(dat2.trim$Idiomaticity)[levels(dat2.trim$Idiomaticity)=="Lit"] <- "Literal"
+levels(dat2.trim$Idiomaticity)[levels(dat2.trim$Idiomaticity)=="Idiom"] <- "Idiomatic"
+
+## save releveled and renamed data
+save(dat2.trim, file="./EEG - Final data/dat2.trim.rdat" )
+
+# Refit the model with the renamed factor levels
+m12c.T2 <- lmer(mV ~ Context+Group*Idiomaticity*Condition+Anteriority+Hemisphere+VF.c+
+                  (1+ Idiomaticity|Subject)+(1+ Context|Target), data=dat2.trim, REML=F)
+
+# Save model with renamed factor levels
+save(m12c.T2, file="./EEG - Final data/m12c.T2.rdat")
+
+library(effects)
+plot_m12c.T2 <- allEffects(m12c.T2)
+plot_m12c.T2 # print effects
+
+# Use ggplot to visualise interaction
+T2int <- plot_m12c.T2[[5]] # save the interaction effect
+T2int.df <- as.data.frame(T2int) # convert into dataframe
+```
+
+
+# Plot interaction effect with 'effects' package
+```{r}
+## For students
+library(ggplot2)
+(ggplotT2_m12Y <- ggplot(data=T2int.df[T2int.df$Group =='student',], aes(x=Idiomaticity, y=fit, fill=Condition)) +
+  geom_bar(stat="identity", position=position_dodge(), color='black', lwd=1) +
+  scale_fill_manual(values=c('green','red')) + coord_cartesian(ylim=c(-3,3)) +
+  labs(title="Interaction effect 300-400 ms - Students", x="Type of test sentence", y="Fitted values mV") +
+  theme(plot.title = element_text(hjust = 0.5)))
+
+## For elderly adults
+(ggplotT2_m12O <- ggplot(data=T2int.df[T2int.df$Group =='senior',], aes(x=Idiomaticity, y=fit, fill=Condition)) +
+  geom_bar(stat="identity", position=position_dodge(), color='black', lwd=1) +
+  scale_fill_manual(values=c('green','red')) + coord_cartesian(ylim=c(-3,3)) +
+  labs(title="Interaction effect 300-400 ms - Senior", x="Type of test sentence", y="Fitted values mV") +
+  theme(plot.title = element_text(hjust = 0.5)))
+
+# Use plots with grey scale
+## Plot students
+(ggplotT2_m12Y_grey <- ggplot(data=T2int.df[T2int.df$Group =='student',], aes(x=Idiomaticity, y=fit, fill=Condition)) +
+  geom_bar(stat="identity", position=position_dodge(), color='black', lwd=1) +
+  scale_fill_grey() + coord_cartesian(ylim=c(-3,3)) +
+  labs(title="Interaction effect 300-400 ms - Students", x="Type of test sentence", y="Fitted values mV") +
+  theme(plot.title = element_text(hjust = 0.5)))
+
+## Plot seniors
+(ggplotT2_m12O_grey <- ggplot(data=T2int.df[T2int.df$Group =='senior',], aes(x=Idiomaticity, y=fit, fill=Condition)) +
+  geom_bar(stat="identity", position=position_dodge(), color='black', lwd=1) +
+  scale_fill_grey() + coord_cartesian(ylim=c(-3,3)) +
+  labs(title="Interaction effect 300-400 ms - Seniors", x="Type of test sentence", y="Fitted values mV") +
+  theme(plot.title = element_text(hjust = 0.5)))
+```
+
+# Fit final model on difference wave of incorrect - correct condition (set REML to TRUE for model coefficients)
+```{r}
+# Calculate difference wave
+## Load required package
+library(dplyr)
+
+datdiff2 <- dat2.trim %>% 
+  group_by(Subject, Context, Idiomaticity, Anteriority, Hemisphere) %>%
+  mutate(mVdiff = mean(mV[Condition == "incorrect"])-mean(mV[Condition == "correct"]))
+
+# Check reference level Idiomaticity
+contrasts(datdiff2$Idiomaticity)
+
+# Change contrast level to subtract literal from idiomatic
+#datdiff2$Idiomaticity <- relevel(datdiff2$Idiomaticity, ref = "Idiomatic")
+
+# Fit model with difference wave
+mdiff.T2 <- lmer(mVdiff ~ Context+Group*Idiomaticity+Anteriority+Hemisphere+VF.c+
+                  (1+ Idiomaticity|Subject), data=datdiff2, REML=T) 
+
+# Calculate constrast
+(DiffT2_contrast_Idiom <- lsmeans(mdiff.T2, pairwise ~ Idiomaticity|Group))
+
+# visualize interaction
+lsmip(mdiff.T2, Idiomaticity ~ Group)
+
+```

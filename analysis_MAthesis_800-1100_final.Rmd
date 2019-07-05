@@ -1,0 +1,266 @@
+---
+title: "analysis_MAthesis_800-1100"
+author: "Amélie la Roi"
+date: "5 februari 2017"
+output: html_document
+---
+
+Last update: January 8, 2019
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+# Data analysis after course Martijn Wieling
+
+# Load data
+```{r}
+load("./EEG - Final data/T5_final.rdat")
+
+dat5 <- aggregate(all.T5_final$mV, by=list(all.T5_final$Subject, all.T5_final$Group.x, all.T5_final$TrialNr, all.T5_final$Target, all.T5_final$Constraint, all.T5_final$Idiomaticity, all.T5_final$Condition, all.T5_final$Anteriority, all.T5_final$Hemisphere, all.T5_final$Score_total_adj, 
+all.T5_final$VF_total_ADJ, all.T5_final$WP_total, all.T5_final$WP_error), FUN=mean)
+colnames(dat5) <- c('Subject','Group','Trial','Target','Context','Idiomaticity','Condition',
+                    'Anteriority','Hemisphere','RS','VF','WP_total','WP_error','mV')
+save(dat5, file="./EEG - Final data/dat5.rdat")
+```
+
+# Inspect variables --> controleer normale verdeling en scale variabelen wanneer nodig
+```{r}
+hist(dat5$RS)
+hist(dat5$VF)
+hist(scale(dat5$WP_total, center=T, scale=T))
+dat5$WP.scale <- scale(dat5$WP_total, center=T, scale=T)
+hist(dat5$WP.scale)
+
+# check dummy coding and relevel if necessary
+contrasts(dat5$Group)
+contrasts(dat5$Context)
+contrasts(dat5$Idiomaticity)
+contrasts(dat5$Condition)
+
+dat5$Group <- relevel(dat5$Group, "student")
+dat5$Context <- relevel(dat5$Context, "Neutral")
+dat5$Idiomaticity <- relevel(dat5$Idiomaticity, "Lit")
+```
+# Model fitting
+## Start by model with only random intercepts
+```{r}
+library(lme4)
+m1.T5 <- lmer(mV ~ (1|Subject) + (1|Target), data=dat5)
+summary(m1.T5)
+```
+## Check whether by-item analysis is needed
+```{r}
+m2.T5 <- lmer(mV ~ (1|Subject), data=dat5)
+AIC(m2.T5)-AIC(m1.T5) # addition of random intercept for Target minimizes AIC by more than 2, so keep in
+```
+## Test effect of 'Condition'
+```{r}
+m3.T5 <- lmer(mV ~ Condition + (1|Subject) + (1|Target), data=dat5, REML=F)
+summary(m3.T5) # Condition is a significant predictor
+m1.T5 <- lmer(mV ~ (1|Subject)+(1|Target), data=dat5, REML=F) # REML=F to compare fixed effects
+AIC(m1.T5)-AIC(m3.T5) # inclusion of Condition improves model fit
+```
+## Test effect of 'Idiomaticity'
+```{r}
+m4.T5 <- lmer(mV ~ Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat5, REML=F)
+summary(m4.T5) # 'Idiomaticity' is a significant predictor
+AIC(m3.T5)-AIC(m4.T5) # inclusion of Idiomaticity improves model fit
+```
+## Test whether 'Idiomaticity' and 'Condition' interact
+```{r}
+m5.T5 <- lmer(mV ~ Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat5, REML=F)
+summary(m5.T5) # no significant interaction 'Idiomaticity' and 'Condition'
+```
+## Test whether relation between 'Idiomaticity' and 'Condition' is modulated by 'Group' (according to hypothesis)
+```{r}
+m6.T5 <- lmer(mV ~ Group * Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat5, REML=F)
+summary(m6.T5) # relation between 'Idiomaticity' and 'Condition' is not significantly modulated by 'Group'
+```
+## Test whether 'Idiomaticity' interacts with 'Group' alone
+```{r}
+m7.T5 <- lmer(mV ~ Group * Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat5, REML=F)
+summary(m7.T5) # significant interaction 'Group' and 'Idiomaticity'
+AIC(m4.T5)-AIC(m7.T5) # inclusion of interaction Group * Idiomaticity improves model fit
+```
+## Test whether 'Group' interacts with 'Condition alone'
+```{r}
+m8.T5 <- lmer(mV ~ Group * Condition + Idiomaticity + (1|Subject) + (1|Target), data=dat5, REML=F)
+summary(m8.T5) # significant interaction 'Group' and 'Condition'
+AIC(m7.T5)-AIC(m8.T5) # no difference in model fit between model with interaction Group*Idiomaticity and Group*Condition
+```
+### Given the hypothesized differences in idiom processing between younger and older adults, the interaction Group * Idiomaticity 
+### will be kept in the model
+
+## Test effect of 'Context' 
+```{r}
+m9.T5 <- lmer(mV ~ Context + Group*Idiomaticity+Condition+(1|Subject)+(1|Target), data=dat5, REML=F)
+summary(m9.T5) # 'Context' is a significant individual predictor
+AIC(m7.T5)-AIC(m9.T5) # inclusion of Context improves model fit
+```
+## Test whether 'Context' modulates significant interaction between 'Group' and 'Idiomaticity' (according to the hypothesis)
+```{r} 
+m10.T5 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat5, REML=F)
+summary(m10.T5) # interaction Group*Context*Idiomaticity is nearly significant 
+AIC(m9.T5)-AIC(m10.T5) # model with interaction Group*Context*Idiomaticity improves model fit
+```
+## Test whether including random slopes influences significance of interaction Group by Context by Idiomaticity
+```{r}
+m10a.T5 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (Idiomaticity|Subject) + (1|Target), data=dat5, REML=T)
+                                                                                              ## this means that the effect of the Idiomaticity
+                                                                                              ## of the test sentence on the voltage may
+                                                                                              ## differ over Subjects (e.g., one elderly
+                                                                                              ## adult may be more familiar with a specific
+                                                                                              ## idiom than another elderly adult)
+                                                                                                
+                                                                                               ### this random slope can account for the
+                                                                                               ### fact that the idiom characteristics
+                                                                                              ### were only pre-tested on younger adults
+
+summary(m10a.T5) # taking out variability of Idiomaticity per subject makes interaction Group*Context*Idiomaticity significant
+m10.T5 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat5, REML=T) # REML=T to compare random effects
+AIC(m10.T5)-AIC(m10a.T5) # including random slopes for Idiomaticity per Subject improves model fit
+```
+## Test whether 'Context' simply interacts with 'Group' (this simpler model tests if interaction Context*Idiomaticity is necessary)
+```{r}
+m11.T5 <- lmer(mV ~ Group * Context + Idiomaticity + Condition + (Idiomaticity|Subject) + (1|Target), data=dat5, REML=F)
+m10a.T5 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (Idiomaticity|Subject) + (1|Target), data=dat5, REML=F) # REML=F for fixed effect comparison
+summary(m11.T5) # 'Context' modulates the voltage of younger and elderly adults in a different way
+AIC(m10a.T5)-AIC(m11.T5) # model with interaction Group*Context does not have a better fit than complex model
+```
+### Best model so far: m10a.T5
+
+## Test effect spatial predictors
+```{r}
+m13.T5 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+(Idiomaticity|Subject)+(1|Target), data=dat5, REML=F)
+summary(m13.T5) # Anteriority is significant, keep in
+AIC(m10a.T5)-AIC(m13.T5) # inclusion of Anteriority improves model fit
+m14.T5 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+Hemisphere+
+                 (Idiomaticity|Subject)+(1|Target), data=dat5, REML=F)
+summary(m14.T5) # Hemisphere is not significant, leave out
+```
+## Test effect of offline cognitive tests
+### Center variables
+```{r}
+dat5$RS.c <- (dat5$RS - mean(dat5$RS))
+dat5$VF.c <- (dat5$VF - mean(dat5$VF))
+dat5$WP_total.c <- (dat5$WP_total - mean(dat5$WP_total))
+
+m15.T5 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+RS.c+(Idiomaticity|Subject)+(1|Target), data=dat5, REML=F)
+summary(m15.T5) # reading span is not a significant predictor, so leave out
+
+m16.T5 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+VF.c+(Idiomaticity|Subject)+(1|Target), data=dat5, REML=F)
+summary(m16.T5) # verbal fluency is a significant predictor, keep in
+AIC(m13.T5)-AIC(m16.T5) # inclusion of Verbal Fluency improves model fit
+
+m17.T5 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+VF.c+WP_total.c+(Idiomaticity|Subject)+(1|Target), data=dat5, REML=F)
+summary(m17.T5) # paired-associates tast score is not a significant predictor, 
+                # but verbal fluency score remains significant as a predictor of mean voltage
+```
+### Best model so far: m16.T5
+
+# Test random slope for Context per Target
+```{r}
+m16a.T5 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+VF.c+(Idiomaticity|Subject)+(Context|Target), data=dat5, REML=T)
+                                                                            # add random slopes for Context per Target
+                                                                            ## this means that the effect of Context
+                                                                            ## on the voltage may be differ
+                                                                            ## over Targets (and thus idioms)
+                                                                            ## (e.g., a particular Target may be influenced
+                                                                            ## more by a preceding context than the other, 
+                                                                            ## because this target less more predictable)
+
+summary(m16a.T5)
+m16.T5 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+VF.c+(Idiomaticity|Subject)+(1|Target), data=dat5, REML=T) # REML=T to compare random effects
+AIC(m16.T5)-AIC(m16a.T5) # random slope for Context per Target decreases AIC by >2, so keep in
+anova(m16.T5, m16a.T5, refit=F) ## random slope for Context per Target significantly improves the model's fit to the data
+```
+
+# Test whether the interaction Group*Context*Idiomaticity is still needed when random slopes for Context per Target are included
+```{r}
+m16a.T5 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+VF.c+
+                            (Idiomaticity|Subject)+(Context|Target), data=dat5, REML=F) # REML=F to compare fixed effects
+m16b.T5 <- lmer(mV ~ Group*Context+Idiomaticity+Condition+Anteriority+VF.c+
+                  (Idiomaticity|Subject)+(Context|Target), data=dat5, REML=F) 
+AIC(m16b.T5)-AIC(m16a.T5) # No significance between two models, so keep simpler model --> m16b.T5
+```
+#### Best model so far: m16b.T5 
+
+## Check distribution of residuals and trim model if needed
+```{r}
+qqnorm(resid(m16b.T5))
+qqline(resid(m16b.T5))
+plot(fitted(m16b.T5), resid(m16b.T5))
+
+## trim model
+m16b.T5 <- lmer(mV ~ Group*Context+Idiomaticity+Condition+Anteriority+VF.c+
+                  (Idiomaticity|Subject)+(Context|Target), data=dat5, REML=T) # REML=T just like when trimming models in other time windows
+dat5.trim <- dat5[abs(scale(resid(m16b.T5))) < 2.5, ]
+m16c.T5 <- lmer(mV ~ Group*Context+Idiomaticity+Condition+Anteriority+VF.c+
+                  (1+Idiomaticity|Subject)+(1+Context|Target), data=dat5.trim, REML=T)
+summary(m16c.T5)
+
+## check how much data was removed
+(noutliers <- sum(abs(scale(resid(m16b.T5))) >= 2.5))
+noutliers/nrow(dat5) # only 2.18 % of the data was removed
+
+## check change in correlation between observed and fitted values after trimming the data
+cor(dat5$mV, fitted(m16b.T5))^2 # is 0.111
+cor(dat5.trim$mV, fitted(m16c.T5))^2 # increased to 0.127
+
+## check distribution of residuals after trimming
+qqnorm(resid(m16c.T5))
+qqline(resid(m16c.T5))
+plot(fitted(m16c.T5), resid(m16c.T5))
+hist(resid(m16c.T5)) # approaches normal distribution
+```
+# Final model: m16c.T5 (for summmary of coefficients final model set REML to TRUE)
+
+## To get insight in the direction of the interaction between Group and Context calculate contrasts
+```{r}
+library(lsmeans)
+dat5.trim$Context <- relevel(dat5.trim$Context, "High") # relevel the factor Condition to make contrasts more comprehensible
+
+m16c.T5 <- lmer(mV ~ Group*Context+Idiomaticity+Condition+Anteriority+VF.c+
+                  (1+Idiomaticity|Subject)+(1+Context|Target), data=dat5.trim, REML=F) # set REML=F to calculate contrasts
+T5_contrast_Group <- lsmeans(m16c.T5, pairwise ~ Context|Group)
+
+# visualize interaction
+lsmip(m16c.T5, Context ~ Group)
+```
+
+# Prepare data for plotting with the 'effects' package
+```{r}
+# See https://rpubs.com/palday/mixed-interactions
+
+# Rename factor levels for plotting
+library(plyr)
+levels(dat5.trim$Idiomaticity)[levels(dat5.trim$Idiomaticity)=="Lit"] <- "Literal"
+levels(dat5.trim$Idiomaticity)[levels(dat5.trim$Idiomaticity)=="Idiom"] <- "Idiomatic"
+levels(dat5.trim$Context)[levels(dat5.trim$Context)=="High"] <- "Predictive"
+levels(dat5.trim$Group)[levels(dat5.trim$Group)=="student"] <- "Students"
+levels(dat5.trim$Group)[levels(dat5.trim$Group)=="senior"] <- "Seniors"
+
+## save releveled and renamed data
+save(dat5.trim, file="./EEG - Final data/dat5.trim.rdat" )
+
+# Refit the model with the renamed factor levels
+m16c.T5 <- lmer(mV ~ Group*Context+Idiomaticity+Condition+Anteriority+VF.c+
+                  (1+Idiomaticity|Subject)+(1+Context|Target), data=dat5.trim, REML=F) 
+
+# Save model with renamed factor levels
+save(m16c.T5, file="./EEG - Final data/m16c.T5.rdat")
+
+library(effects)
+plot_m16c.T5 <- allEffects(m16c.T5)
+plot_m16c.T5 # print effects
+
+# Use ggplot to visualise interaction
+T5int <- plot_m16c.T5[[5]] # save the interaction effect
+T5int.df <- as.data.frame(T5int) # convert into dataframe
+
+```

@@ -1,0 +1,278 @@
+---
+title: "analysis_MAthesis_500-800"
+output: html_document
+---
+
+Last update: February 25, 2019
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+# Data analysis after course Martijn Wieling
+
+# Load data
+```{r}
+load("./EEG - Final data/T4_final.rdat")
+
+dat4 <- aggregate(all.T4_final$mV, by=list(all.T4_final$Subject, all.T4_final$Group.x, all.T4_final$TrialNr, all.T4_final$Target, all.T4_final$Constraint, all.T4_final$Idiomaticity, all.T4_final$Condition, all.T4_final$Anteriority, all.T4_final$Hemisphere, all.T4_final$Score_total_adj, 
+all.T4_final$VF_total_ADJ, all.T4_final$WP_total, all.T4_final$WP_error), FUN=mean)
+colnames(dat4) <- c('Subject','Group','Trial','Target','Context','Idiomaticity','Condition',
+                    'Anteriority','Hemisphere','RS','VF','WP_total','WP_error','mV')
+save(dat4, file="./EEG - Final data/dat4.rdat")
+```
+
+# Inspect variables --> controleer normale verdeling en scale variabelen wanneer nodig
+```{r}
+hist(dat4$RS)
+hist(dat4$VF)
+hist(scale(dat4$WP_total, center=T, scale=T))
+dat4$WP.scale <- scale(dat4$WP_total, center=T, scale=T)
+hist(dat4$WP.scale)
+
+# check dummy coding and relevel if necessary
+contrasts(dat4$Group)
+contrasts(dat4$Context)
+contrasts(dat4$Idiomaticity)
+contrasts(dat4$Condition)
+
+dat4$Group <- relevel(dat4$Group, "student")
+dat4$Context <- relevel(dat4$Context, "Neutral")
+dat4$Idiomaticity <- relevel(dat4$Idiomaticity, "Lit")
+```
+
+# Model fitting
+## start by model with only random intercepts
+```{r}
+library('lme4')
+m1.T4 <- lmer(mV ~ (1|Subject) + (1|Target), data=dat4)
+summary(m1.T4)
+```
+
+## Check whether by-item analysis is needed
+```{r}
+m2.T4 <- lmer(mV ~ (1|Subject), data=dat4)
+AIC(m2.T4)-AIC(m1.T4) # addition of random intercept for Target minimizes AIC by more than 2, so keep in
+```
+
+## Test effect of 'Condition'
+```{r}
+m3.T4 <- lmer(mV ~ Condition + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m3.T4) # Condition is a significant predictor
+m1.T4 <- lmer(mV ~ (1|Subject) + (1|Target), data=dat4, REML=F) # REML=F to compare fixed effects
+AIC(m1.T4)-AIC(m3.T4) # inclusion of Condition improves model fit
+```
+
+## Test effect of 'Idiomaticity'
+```{r}
+m4.T4 <- lmer(mV ~ Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m4.T4) # 'Idiomaticity' is a significant predictor
+AIC(m3.T4)-AIC(m4.T4) # inclusion of Idiomaticity improves model fit
+```
+
+## Test whether 'Idiomaticity' and 'Condition' interact
+```{r}
+m5.T4 <- lmer(mV ~ Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m5.T4) # significant interaction 'Idiomaticity' and 'Condition'
+AIC(m4.T4)-AIC(m5.T4) # interaction improves model fit
+```
+
+## Test whether relation between 'Idiomaticity' and 'Condition' is modulated by 'Group'
+```{r}
+m6.T4 <- lmer(mV ~ Group * Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m6.T4) # relation between 'Idiomaticity' and 'Condition' is not significantly modulated by 'Group'
+```
+
+## Test whether 'Idiomaticity' interacts with 'Group' alone
+```{r}
+m7.T4 <- lmer(mV ~ Group * Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m7.T4) # no significant interaction 'Group' and 'Idiomaticity'
+```
+
+## Test whether 'Group' interacts with 'Condition'
+```{r}
+m8.T4 <- lmer(mV ~ Group * Condition + Idiomaticity + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m8.T4) # significant interaction 'Group' and 'Condition', keep in
+```
+
+## Test effect of 'Context' 
+```{r}
+m9.T4 <- lmer(mV ~ Context + Group * Condition + Idiomaticity + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m9.T4) # 'Context' is not a significant individual predictor
+```
+
+## Test whether 'Context' interacts with 'Group'
+```{r}
+m10.T4 <- lmer(mV ~ Group * Context + Condition + Idiomaticity + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m10.T4) # Context does not interact with Group
+```
+
+## Test whether 'Context' interacts with 'Idiomaticity'
+```{r}
+m11.T4 <- lmer(mV ~ Group * Condition + Context * Idiomaticity + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m11.T4) # Context does not interact with Idiomaticity
+```
+
+## Test whether 'Context' interacts with 'Group' and 'Idiomaticity' and 'Condition' (according to the hypothesis)
+```{r}
+m12.T4 <- lmer(mV ~ Group * Context * Idiomaticity * Condition + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m12.T4) # 'Context' does not significantly interact with 'Group' and 'Idiomaticity' and 'Condition' simultaneously
+                # but underlying three-way interacion Group * Context * Idiomaticity is significant
+```
+
+## Test model with three-way interaction Group * Context * Idiomaticity
+```{r}
+m13.T4 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat4, REML=F)
+summary(m13.T4) # Group, Context and Idiomaticity significantly interact
+AIC(m8.T4)-AIC(m13.T4) # interaction Group*Context*Idiomaticity does not improve model fit compared to model with only Group*Condition interaction 
+```
+## Test whether adding random slopes can explain why interaction m13.T4 is significant, but does not improve model fit compared to simpler model 
+```{r}
+m13a.T4 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (1+Idiomaticity|Subject) + (1|Target), data=dat4, REML=T)
+m13.T4 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (1|Subject) + (1|Target), data=dat4, REML=T) # REML=T for model comparison
+AIC(m13.T4)-AIC(m13a.T4) # inclusion of random slope for Idiomaticity per Subjects improves model fit
+```
+## Test whether model with interaction Group by Context by Idiomaticity still isn't better than model with Group by Condition interaction
+```{r}
+m8.T4 <- lmer(mV ~ Group * Condition + Idiomaticity + (1|Subject) + (1|Target), data=dat4, REML=T) # REML=T for model comparison
+AIC(m8.T4)-AIC(m13a.T4) # inclusion of random slope improves model with interaction Group*Context*Idiomaticity compared to simpler model 
+```
+
+## Test inclusion of random slope for Context per Target
+```{r}
+m13b.T4 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (1+Idiomaticity|Subject) + (1+Context|Target), data=dat4, REML=T)
+AIC(m13a.T4)-AIC(m13b.T4) # random slope for Context per Target improves model fit
+```
+
+## Test effect spatial predictors
+```{r}
+m14.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+(1+Idiomaticity|Subject)+(1+Context|Target), data=dat4, REML=F)
+summary(m14.T4) # Anteriority is significant
+m13b.T4 <- lmer(mV ~ Group * Context * Idiomaticity + Condition + (1+Idiomaticity|Subject) +
+                  (1+Context|Target), data=dat4, REML=F) # REML=F for comparison fixed effects
+AIC(m13b.T4)-AIC(m14.T4) # Anteriority improves model fit
+m15.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+Hemisphere+(1+Idiomaticity|Subject)+
+                 (1+Context|Target), data=dat4, REML=F)
+summary(m15.T4) # Hemisphere is not significant
+```
+
+## Test effect of offline cognitive tests
+### Center variables
+```{r}
+dat4$RS.c <- (dat4$RS - mean(dat4$RS))
+dat4$VF.c <- (dat4$VF - mean(dat4$VF))
+dat4$WP_total.c <- (dat4$WP_total - mean(dat4$WP_total))
+
+m16.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+RS.c+(1+Idiomaticity|Subject)+
+                 (1+Context|Target), data=dat4, REML=F)
+summary(m16.T4) # Reading Span is not significant
+
+m17.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+VF.c+(1+Idiomaticity|Subject)+
+                 (1+Context|Target), data=dat4, REML=F)
+summary(m17.T4) # Verbal fluency is not significant
+
+m18.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+WP_total.c+(1+Idiomaticity|Subject)+
+                 (1+Context|Target), data=dat4, REML=F)
+summary(m18.T4) # Paired-associates test is not significant
+```
+### Best model so far: m14.T4
+
+## Check distribution of residuals and trim model if needed
+```{r}
+qqnorm(resid(m14.T4))
+qqline(resid(m14.T4)) # there seem to be a small number of extreme values that influence the distribution
+plot(fitted(m14.T4), resid(m14.T4))
+hist(resid(m14.T4))
+
+## trim data
+dat4.trim <- dat4[abs(scale(resid(m14.T4))) < 2.5, ]
+
+## save trimmed data
+save(dat4.trim, file="./EEG - Final data/dat4.trim.rdat" )
+
+## fit model with trimmed data
+m14a.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+
+                  (1+ Idiomaticity|Subject)+(1+ Context|Target), data=dat4.trim, REML=T)
+summary(m14a.T4)
+
+# Fit same model with untrimmed data with REML=T to compare it to model with trimmed data
+m14.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+(1+Idiomaticity|Subject)+
+                 (1+Context|Target), data=dat4, REML=T) 
+
+## check how much data was removed
+(noutliers <- sum(abs(scale(resid(m14.T4))) >= 2.5))
+noutliers/nrow(dat4) # only 2.22 % of the data was removed
+
+## check change in correlation between observed and fitted values after trimming the data
+cor(dat4$mV, fitted(m14.T4))^2 # is 0.108
+cor(dat4.trim$mV, fitted(m14a.T4))^2 # increased to 0.127
+
+# check distribution of residuals after trimming
+qqnorm(resid(m14a.T4))
+qqline(resid(m14a.T4)) # distribution is better
+plot(fitted(m14a.T4), resid(m14a.T4))
+hist(resid(m14a.T4)) # approaches normal distribution
+```
+
+# Final model after model criticism: m14a.T4 (for summmary of coefficients final model set REML to TRUE)
+
+## To get insight in the direction of the interaction between Group, Context, and Idiomaticity calculate contrasts
+```{r}
+library(lsmeans)
+dat4.trim$Context <- relevel(dat4.trim$Context, "High") # relevel the factor Condition to make contrasts more comprehensible
+m14b.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+
+                  (1+ Idiomaticity|Subject)+(1+ Context|Target), data=dat4.trim, REML=F) # refit model with releveled factor
+
+(T4_contrast_Idiom <- lsmeans(m14b.T4, pairwise ~ Context|Group|Idiomaticity))
+(T4_contrast_Cont <- lsmeans(m14b.T4, pairwise ~ Idiomaticity|Group|Context))
+
+
+# visualize interaction
+lsmip(m14b.T4, Context ~ Idiomaticity|Group)
+lsmip(m14b.T4, Idiomaticity ~ Context|Group)
+```
+# Investigate whether increased positivity for literal sentences preceded by predictive context in elderly adults is driven by correct or incorrect sentences
+```{r}
+# Calculate mV literal sentences preceded by predictive context in elderly adults
+## Correct critical word
+mean(dat4.trim$mV[dat4.trim$Group == "senior" & dat4.trim$Context == "Predictive" & dat4.trim$Idiomaticity == "Literal" & dat4.trim$Condition == 'correct']) # 0.58 mV
+
+## Incorrect critical word
+mean(dat4.trim$mV[dat4.trim$Group == "senior" & dat4.trim$Context == "Predictive" & dat4.trim$Idiomaticity == "Literal" & dat4.trim$Condition == 'incorrect']) # 1.55 mV
+
+## Effect seems to be carried by the incorrect condition ##
+```
+
+# Prepare data for plotting with the 'effects' package
+```{r}
+# See https://rpubs.com/palday/mixed-interactions
+
+# Rename factor levels for plotting
+library(plyr)
+levels(dat4.trim$Idiomaticity)[levels(dat4.trim$Idiomaticity)=="Lit"] <- "Literal"
+levels(dat4.trim$Idiomaticity)[levels(dat4.trim$Idiomaticity)=="Idiom"] <- "Idiomatic"
+levels(dat4.trim$Context)[levels(dat4.trim$Context)=="High"] <- "Predictive"
+
+## save releveled and renamed data
+save(dat4.trim, file="./EEG - Final data/dat4.trim.rdat" )
+
+# Refit the model with the renamed factor levels
+m14b.T4 <- lmer(mV ~ Group*Context*Idiomaticity+Condition+Anteriority+
+                  (1+ Idiomaticity|Subject)+(1+ Context|Target), data=dat4.trim, REML=F)
+
+# Save model with renamed factor levels
+save(m14b.T4, file="./EEG - Final data/m14b.T4.rdat")
+
+library(effects)
+plot_m14b.T4 <- allEffects(m14b.T4)
+plot_m14b.T4 # print effects
+
+# Use ggplot to visualise interaction
+T4int <- plot_m14b.T4[[3]] # save the interaction effect
+T4int.df <- as.data.frame(T4int) # convert into dataframe
+
+```
