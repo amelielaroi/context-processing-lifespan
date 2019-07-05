@@ -2,8 +2,7 @@
 Supplementary materials for paper: La Roi, A., Sprenger, S.A., & Hendriks, P., ERPs Reveal Increased Dependency on Linguistic 
 Context due to Cognitive Aging. July 2019. Under review.
 
-<i>1a. Lmer analysis of mean voltages in 200-300 ms time window</i>
-<i> *will be added after publication*</i>
+[1a. Lmer analysis of mean voltages in 200-300 ms time window](./analysis_MAthesis_200-300_final.Rmd)
 
 [1b. Data file 200-300 ms time window](./T1_final.rdat)
 
