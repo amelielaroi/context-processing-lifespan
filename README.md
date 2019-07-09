@@ -21,3 +21,5 @@ Context due to Cognitive Aging. July 2019. Under review.
 [5a. Lmer analysis of mean voltages in 800-1100 ms time window](./analysis_MAthesis_800-1100_final.Rmd)
 
 [5b. Data file 800-1100 ms time window](./T1_final.rdat)
+
+[6. CSV file with complete set of materials](./materials_complete_paper.csv)
