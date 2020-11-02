@@ -1,6 +1,8 @@
 # context-processing-lifespan
 Supplementary materials for paper: La Roi, A., Sprenger, S.A., & Hendriks, P. (2020). ERPs Reveal Increased Dependency on Linguistic 
-Context due to Cognitive Aging. July 2019. Under review.
+Context due to Cognitive Aging. Journal of Experimental Psychology: Learning, Memory, and Cognition, 46(7), 1226-1257.
+
+Last update: November 2, 2020
 
 [1a. Lmer analysis of mean voltages in 200-300 ms time window](./analysis_MAthesis_200-300_final.Rmd)
 
